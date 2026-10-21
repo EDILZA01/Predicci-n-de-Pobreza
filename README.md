@@ -100,7 +100,19 @@ pip install -r requirements.txt
   5. `ESTRSOCIAL` (`int`): Estrato socioeconómico asignado al hogar (1: Alto a 6: Muy Bajo).
   6. `SG42` (`float`): Gasto imputado por alquiler de vivienda en Soles (limpieza de comas decimales e imputación a `0.0`).
 
-### 3.2 Fundamentación Matemática Vectorizada (NumPy)
+### 3.2 Prevención Rigurosa de Fuga de Datos (Data Leakage) y Enfoque PMT
+
+El INEI clasifica oficialmente la pobreza monetaria aplicando una fórmula determinista: si $\frac{\text{GASHOG2D}}{\text{MIEPERHO}} < \text{LINEA}$, el hogar es clasificado como pobre. 
+
+**Regla de Oro Aplicada:**
+Si el modelo recibiera las variables `GASHOG2D` (Gasto Total Bruto), `INGBRUHD` (Ingreso Bruto) o `LINEA` (Línea de Pobreza Oficial), aprendería trivialmente a dividir y comparar esos valores, produciendo un $F1\text{-Score} = 100\%$ artificial (fuga de datos / memorización matemática).
+
+Para garantizar un modelo predictivo legítimo y robusto frente a jurados y comités científicos, se implementó el enfoque internacional de **Proxy Means Testing (PMT)** (estándar de focalización socioeconómica del Banco Mundial y programas como JUNTOS):
+- **Exclusión total** de `GASHOG2D`, `INGBRUHD`, `LINEA` y `LINPE` en el espacio de características $X$.
+- Empleo exclusivo de variables estructurales observables y demográficas (`DOMINIO`, `ESTRATO`, `MIEPERHO`, `PERCEPHO`, `ESTRSOCIAL`) y sub-gastos puntuales de infraestructura (`SG42`).
+- Las métricas obtenidas ($F1\text{-Score} = 36.69\%$, $\text{ROC-AUC} = 0.6888$, $\text{Accuracy} = 80.27\%$) corroboran un aprendizaje estadístico real y generalizable sin fuga de información.
+
+### 3.3 Fundamentación Matemática Vectorizada (NumPy)
 Los momentos estadísticos se calculan vectorialmente mediante álgebra analítica:
 - **Centrado:** $dx = x - \bar{x}, \quad dy = y - \bar{y}$
 - **Varianza:** $\sigma_x^2 = \text{mean}(dx \cdot dx)$
