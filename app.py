@@ -18,6 +18,8 @@ import pandas as pd
 import pydeck as pdk
 import requests
 import streamlit as st
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 DEFAULT_API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 DATASET_PATH = Path("data/processed/enaho_processed.csv")
@@ -93,8 +95,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "map_style_label": "Estilo del Mapa",
         "map_style_light": "🗺️ Mapa Claro Oficial (Recomendado)",
         "map_style_satellite": "🛰️ Vista Satelital",
-        "scatter_title": "5️⃣ Diagramas de Dispersión Multidimensional",
-        "scatter_desc": "Compara el hogar evaluado (estrella amarilla) frente a la nube de datos de hogares No Pobres y Vulnerables de la ENAHO.",
+        "scatter_title": "5️⃣ Visualización Multidimensional Integral (6 Variables)",
+        "scatter_desc": "Compara el hogar evaluado frente a la distribución nacional considerando su vector socioeconómico completo.",
+        "scatter_pca_title": "🎯 Dispersión Multidimensional PCA: Proyección de las 6 Variables (PC1 vs PC2)",
+        "scatter_pca_desc": "Sintetiza matemáticamente DOMINIO, ESTRATO, MIEPERHO, PERCEPHO, ESTRSOCIAL y SG42 en un plano bidimensional óptimo. La estrella dorada ⭐ se desplaza en vivo con cualquier cambio en los 6 controles.",
+        "radar_title": "🕸️ Perfil Multivariado del Hogar: Gráfico de Radar (6 Dimensiones)",
+        "radar_desc": "Compara la huella socioeconómica del hogar (polígono dorado) contra el perfil promedio de hogares Vulnerables (rojo) y No Pobres (azul).",
+        "bivariate_expander_title": "📊 Cortes Bidimensionales Tradicionales (Dispersión Par a Par)",
         "scatter_a_title": "🎯 Dispersión A: Miembros del Hogar vs Gasto en Equipamiento (SG42)",
         "scatter_b_title": "🎯 Dispersión B: Miembros del Hogar vs Perceptores de Ingreso (PERCEPHO)",
         "tab2_intro_title": "🛡️ Evaluación Formal de Modelos y Gobernanza MLOps",
@@ -166,8 +173,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "map_style_label": "Map Theme",
         "map_style_light": "🗺️ Clear Light Map (Recommended)",
         "map_style_satellite": "🛰️ Satellite View",
-        "scatter_title": "5️⃣ Multidimensional Scatter Plots",
-        "scatter_desc": "Compares current evaluated household (yellow star) against real Non-Poor and Vulnerable data points.",
+        "scatter_title": "5️⃣ Comprehensive Multidimensional Visualization (6 Variables)",
+        "scatter_desc": "Compares evaluated household against national distribution considering its full socioeconomic vector.",
+        "scatter_pca_title": "🎯 Multidimensional PCA Scatter Plot: 6-Feature Projection (PC1 vs PC2)",
+        "scatter_pca_desc": "Mathematically synthesizes DOMINIO, ESTRATO, MIEPERHO, PERCEPHO, ESTRSOCIAL and SG42 onto an optimal plane. The golden star ⭐ moves in real-time when any of the 6 controls change.",
+        "radar_title": "🕸️ Multivariate Household Profile: Radar Chart (6 Dimensions)",
+        "radar_desc": "Compares household socioeconomic footprint (gold polygon) against national averages for Vulnerable (red) and Non-Poor (blue) households.",
+        "bivariate_expander_title": "📊 Traditional Bivariate Slices (Pairwise Scatter)",
         "scatter_a_title": "🎯 Scatter A: Household Members vs Equipment Expense (SG42)",
         "scatter_b_title": "🎯 Scatter B: Household Members vs Income Earners (PERCEPHO)",
         "tab2_intro_title": "🛡️ Formal Model Evaluation & MLOps Governance",
@@ -258,6 +270,49 @@ def load_processed_data_sample() -> Optional[pd.DataFrame]:
             df = pd.read_csv(DATASET_PATH)
             sample_df = df.sample(n=min(800, len(df)), random_state=42)
             return sample_df
+        except Exception:
+            return None
+    return None
+
+
+@st.cache_resource
+def load_multidimensional_benchmarks() -> Optional[Dict[str, Any]]:
+    """Ajusta PCA sobre las 6 características de la ENAHO y precomputa perfiles para el gráfico de radar."""
+    if DATASET_PATH.is_file():
+        try:
+            df = pd.read_csv(DATASET_PATH)
+            features = ["DOMINIO", "ESTRATO", "MIEPERHO", "PERCEPHO", "ESTRSOCIAL", "SG42"]
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(df[features])
+            pca = PCA(n_components=2, random_state=42)
+            X_pca = pca.fit_transform(X_scaled)
+
+            np.random.seed(42)
+            idx_sample = np.random.choice(len(df), size=min(1200, len(df)), replace=False)
+
+            mins = np.array([1.0, 1.0, 1.0, 0.0, 1.0, 0.0])
+            maxs = np.array([8.0, 8.0, 12.0, 6.0, 6.0, 1000.0])
+
+            mean_poor = df[df["target"] == 1][features].mean().values
+            mean_non_poor = df[df["target"] == 0][features].mean().values
+
+            norm_poor = np.clip((mean_poor - mins) / (maxs - mins), 0.0, 1.0)
+            norm_non_poor = np.clip((mean_non_poor - mins) / (maxs - mins), 0.0, 1.0)
+
+            return {
+                "scaler": scaler,
+                "pca": pca,
+                "sample_pca": X_pca[idx_sample],
+                "sample_target": df["target"].iloc[idx_sample].values,
+                "var_explained": pca.explained_variance_ratio_ * 100,
+                "mins": mins,
+                "maxs": maxs,
+                "norm_poor": norm_poor,
+                "norm_non_poor": norm_non_poor,
+                "mean_poor": mean_poor,
+                "mean_non_poor": mean_non_poor,
+                "features": features
+            }
         except Exception:
             return None
     return None
@@ -823,99 +878,206 @@ def main() -> None:
 
         st.markdown("---")
 
-        # PASO 5: DIAGRAMAS DE DISPERSIÓN MULTIDIMENSIONAL
+        # PASO 5: VISUALIZACIÓN MULTIDIMENSIONAL INTEGRAL (6 VARIABLES)
         st.markdown(f"### {t['scatter_title']}")
         st.caption(t["scatter_desc"])
 
-        df_sample = load_processed_data_sample()
+        multi_data = load_multidimensional_benchmarks()
 
-        if df_sample is not None:
-            st.markdown(f"#### {t['scatter_a_title']}")
-            fig_sc1, ax_sc1 = plt.subplots(figsize=(8.5, 4.4), facecolor='#0B152F')
-            ax_sc1.set_facecolor('#0F1E42')
+        if multi_data is not None:
+            # 5.1 DIAGRAMA DE DISPERSIÓN MULTIDIMENSIONAL PCA
+            st.markdown(f"#### {t['scatter_pca_title']}")
+            st.caption(t["scatter_pca_desc"])
 
-            non_poor = df_sample[df_sample["target"] == 0]
-            poor = df_sample[df_sample["target"] == 1]
+            # Proyección del hogar actual al espacio PCA 2D
+            curr_raw = np.array([dominio_val, estrato_val, mieperho_val, percepho_val, estrsocial_val, sg42_val], dtype=float)
+            curr_scaled = multi_data["scaler"].transform(curr_raw.reshape(1, -1))
+            curr_pca = multi_data["pca"].transform(curr_scaled)[0]
 
-            ax_sc1.scatter(
-                non_poor["MIEPERHO"], non_poor["SG42"],
-                c='#38BDF8', alpha=0.55, edgecolors='none', s=45,
-                label='No Pobre (ENAHO)' if lang == "es" else 'Non-Poor (ENAHO)'
+            sample_pca = multi_data["sample_pca"]
+            sample_target = multi_data["sample_target"]
+            var_exp = multi_data["var_explained"]
+
+            fig_pca, ax_pca = plt.subplots(figsize=(8.5, 4.8), facecolor='#0B152F')
+            ax_pca.set_facecolor('#0F1E42')
+
+            mask_np = (sample_target == 0)
+            mask_p = (sample_target == 1)
+
+            ax_pca.scatter(
+                sample_pca[mask_np, 0], sample_pca[mask_np, 1],
+                c='#38BDF8', alpha=0.45, edgecolors='none', s=42,
+                label='No Pobre (ENAHO - 6D)' if lang == "es" else 'Non-Poor (ENAHO - 6D)'
             )
-            ax_sc1.scatter(
-                poor["MIEPERHO"], poor["SG42"],
-                c='#F87171', alpha=0.75, edgecolors='none', s=55,
-                label='Pobre / Vulnerable (ENAHO)' if lang == "es" else 'Poor / Vulnerable (ENAHO)'
+            ax_pca.scatter(
+                sample_pca[mask_p, 0], sample_pca[mask_p, 1],
+                c='#F87171', alpha=0.70, edgecolors='none', s=48,
+                label='Pobre / Vulnerable (ENAHO - 6D)' if lang == "es" else 'Poor / Vulnerable (ENAHO - 6D)'
             )
-            ax_sc1.scatter(
-                [mieperho_val], [sg42_val],
-                c='#FBBF24', s=280, marker='*', edgecolors='#FFFFFF', linewidths=2.2,
-                label='HOGAR EVALUADO' if lang == "es" else 'EVALUATED HOUSEHOLD',
+            ax_pca.scatter(
+                [curr_pca[0]], [curr_pca[1]],
+                c='#FBBF24', s=340, marker='*', edgecolors='#FFFFFF', linewidths=2.3,
+                label='HOGAR EVALUADO (Vector 6D)' if lang == "es" else 'EVALUATED HOUSEHOLD (6D Vector)',
                 zorder=10
             )
 
-            ax_sc1.set_xlabel("Número de Miembros del Hogar (MIEPERHO)" if lang == "es" else "Household Members (MIEPERHO)", color='#FFFFFF', fontsize=10.5, fontweight='bold')
-            ax_sc1.set_ylabel("Gasto Equipamiento S/. (SG42)" if lang == "es" else "Equipment Expense PEN (SG42)", color='#FFFFFF', fontsize=10.5, fontweight='bold')
-            ax_sc1.tick_params(colors='#FFFFFF', labelsize=9.5)
-            ax_sc1.set_ylim(-20, min(1400, df_sample["SG42"].quantile(0.98)))
-            ax_sc1.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
-            for spine in ax_sc1.spines.values():
+            ax_pca.set_xlabel(
+                f"Componente Principal 1 (PC1) — {var_exp[0]:.1f}% de Varianza Explicada" if lang == "es" else f"Principal Component 1 (PC1) — {var_exp[0]:.1f}% Explained Variance",
+                color='#FFFFFF', fontsize=10.5, fontweight='bold'
+            )
+            ax_pca.set_ylabel(
+                f"Componente Principal 2 (PC2) — {var_exp[1]:.1f}% de Varianza Explicada" if lang == "es" else f"Principal Component 2 (PC2) — {var_exp[1]:.1f}% Explained Variance",
+                color='#FFFFFF', fontsize=10.5, fontweight='bold'
+            )
+            ax_pca.tick_params(colors='#FFFFFF', labelsize=9.5)
+            ax_pca.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+            for spine in ax_pca.spines.values():
                 spine.set_color('#3B82F6')
 
-            leg1 = ax_sc1.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
-            for text in leg1.get_texts():
+            leg_pca = ax_pca.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9.2)
+            for text in leg_pca.get_texts():
                 text.set_color("#FFFFFF")
 
             plt.tight_layout()
-            st.pyplot(fig_sc1)
+            st.pyplot(fig_pca)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            st.markdown(f"#### {t['scatter_b_title']}")
-            fig_sc2, ax_sc2 = plt.subplots(figsize=(8.5, 4.4), facecolor='#0B152F')
-            ax_sc2.set_facecolor('#0F1E42')
+            # 5.2 GRÁFICO DE RADAR: PERFIL MULTIVARIADO (6 EJES)
+            st.markdown(f"#### {t['radar_title']}")
+            st.caption(t["radar_desc"])
 
-            np.random.seed(42)
-            jitter_x_np = non_poor["MIEPERHO"] + np.random.uniform(-0.18, 0.18, len(non_poor))
-            jitter_y_np = non_poor["PERCEPHO"] + np.random.uniform(-0.18, 0.18, len(non_poor))
-            jitter_x_p = poor["MIEPERHO"] + np.random.uniform(-0.18, 0.18, len(poor))
-            jitter_y_p = poor["PERCEPHO"] + np.random.uniform(-0.18, 0.18, len(poor))
+            radar_labels = [
+                "Región\n(DOMINIO)" if lang == "es" else "Region\n(DOMINIO)",
+                "Estrato Pob.\n(ESTRATO)" if lang == "es" else "Stratum\n(ESTRATO)",
+                "Miembros\n(MIEPERHO)" if lang == "es" else "Members\n(MIEPERHO)",
+                "Perceptores\n(PERCEPHO)" if lang == "es" else "Earners\n(PERCEPHO)",
+                "Estrato Soc.\n(ESTRSOCIAL)" if lang == "es" else "Socio Stratum\n(ESTRSOCIAL)",
+                "Gasto Equip.\n(SG42)" if lang == "es" else "Equipment\n(SG42)"
+            ]
+            N_radar = len(radar_labels)
+            angles = [n / float(N_radar) * 2 * np.pi for n in range(N_radar)]
+            angles += angles[:1]
 
-            ax_sc2.scatter(
-                jitter_x_np, jitter_y_np,
-                c='#38BDF8', alpha=0.55, edgecolors='none', s=45,
-                label='No Pobre (ENAHO)' if lang == "es" else 'Non-Poor (ENAHO)'
-            )
-            ax_sc2.scatter(
-                jitter_x_p, jitter_y_p,
-                c='#F87171', alpha=0.75, edgecolors='none', s=55,
-                label='Pobre / Vulnerable (ENAHO)' if lang == "es" else 'Poor / Vulnerable (ENAHO)'
-            )
-            max_limit = 12
-            ax_sc2.plot([0, max_limit], [0, max_limit], color='#94A3B8', linestyle=':', linewidth=1.8, label='Límite: Perceptores = Miembros' if lang == "es" else 'Limit: Earners = Members')
+            # Normalizar valores del hogar evaluado (0 a 1)
+            curr_norm = np.clip((curr_raw - multi_data["mins"]) / (multi_data["maxs"] - multi_data["mins"]), 0.0, 1.0)
 
-            ax_sc2.scatter(
-                [mieperho_val], [percepho_val],
-                c='#FBBF24', s=280, marker='*', edgecolors='#FFFFFF', linewidths=2.2,
-                label='HOGAR EVALUADO' if lang == "es" else 'EVALUATED HOUSEHOLD',
-                zorder=10
-            )
+            radar_curr = list(curr_norm) + [curr_norm[0]]
+            radar_poor = list(multi_data["norm_poor"]) + [multi_data["norm_poor"][0]]
+            radar_non_poor = list(multi_data["norm_non_poor"]) + [multi_data["norm_non_poor"][0]]
 
-            ax_sc2.set_xlabel("Número de Miembros del Hogar (MIEPERHO)" if lang == "es" else "Household Members (MIEPERHO)", color='#FFFFFF', fontsize=10.5, fontweight='bold')
-            ax_sc2.set_ylabel("Perceptores de Ingreso (PERCEPHO)" if lang == "es" else "Income Earners (PERCEPHO)", color='#FFFFFF', fontsize=10.5, fontweight='bold')
-            ax_sc2.tick_params(colors='#FFFFFF', labelsize=9.5)
-            ax_sc2.set_xlim(0, 15)
-            ax_sc2.set_ylim(-0.5, 9)
-            ax_sc2.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
-            for spine in ax_sc2.spines.values():
-                spine.set_color('#3B82F6')
+            fig_radar = plt.figure(figsize=(7.8, 6.2), facecolor='#0B152F')
+            ax_radar = fig_radar.add_subplot(111, polar=True, facecolor='#0F1E42')
 
-            leg2 = ax_sc2.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
-            for text in leg2.get_texts():
+            ax_radar.set_xticks(angles[:-1])
+            ax_radar.set_xticklabels(radar_labels, color='#FFFFFF', size=9.5, fontweight='bold')
+            ax_radar.set_rlabel_position(22)
+            ax_radar.set_yticks([0.25, 0.50, 0.75, 1.0])
+            ax_radar.set_yticklabels(["25%", "50%", "75%", "100%"], color="#94A3B8", size=8.5)
+            ax_radar.set_ylim(0, 1.05)
+
+            # Promedio No Pobre
+            ax_radar.plot(angles, radar_non_poor, color='#38BDF8', linewidth=2, linestyle='--', label='Promedio No Pobre' if lang == "es" else 'Average Non-Poor')
+            ax_radar.fill(angles, radar_non_poor, color='#38BDF8', alpha=0.12)
+
+            # Promedio Pobre
+            ax_radar.plot(angles, radar_poor, color='#F87171', linewidth=2, linestyle=':', label='Promedio Vulnerable/Pobre' if lang == "es" else 'Average Vulnerable/Poor')
+            ax_radar.fill(angles, radar_poor, color='#F87171', alpha=0.15)
+
+            # Hogar Actual
+            ax_radar.plot(angles, radar_curr, color='#FBBF24', linewidth=3.2, linestyle='solid', label='HOGAR EVALUADO' if lang == "es" else 'EVALUATED HOUSEHOLD')
+            ax_radar.fill(angles, radar_curr, color='#FBBF24', alpha=0.38)
+
+            ax_radar.grid(color='#3B82F6', alpha=0.35, linestyle='-')
+            ax_radar.spines['polar'].set_color('#3B82F6')
+
+            leg_rad = ax_radar.legend(loc='upper right', bbox_to_anchor=(1.35, 1.12), facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9.2)
+            for text in leg_rad.get_texts():
                 text.set_color("#FFFFFF")
 
             plt.tight_layout()
-            st.pyplot(fig_sc2)
+            st.pyplot(fig_radar)
+
+            # 5.3 CORTES BIDIMENSIONALES PAR A PAR (EXPANDER OPCIONAL)
+            with st.expander(t["bivariate_expander_title"]):
+                df_sample = load_processed_data_sample()
+                if df_sample is not None:
+                    st.markdown(f"##### {t['scatter_a_title']}")
+                    fig_sc1, ax_sc1 = plt.subplots(figsize=(8.5, 4.2), facecolor='#0B152F')
+                    ax_sc1.set_facecolor('#0F1E42')
+
+                    non_poor = df_sample[df_sample["target"] == 0]
+                    poor = df_sample[df_sample["target"] == 1]
+
+                    ax_sc1.scatter(
+                        non_poor["MIEPERHO"], non_poor["SG42"],
+                        c='#38BDF8', alpha=0.55, edgecolors='none', s=45,
+                        label='No Pobre (ENAHO)' if lang == "es" else 'Non-Poor (ENAHO)'
+                    )
+                    ax_sc1.scatter(
+                        poor["MIEPERHO"], poor["SG42"],
+                        c='#F87171', alpha=0.75, edgecolors='none', s=55,
+                        label='Pobre / Vulnerable (ENAHO)' if lang == "es" else 'Poor / Vulnerable (ENAHO)'
+                    )
+                    ax_sc1.scatter(
+                        [mieperho_val], [sg42_val],
+                        c='#FBBF24', s=280, marker='*', edgecolors='#FFFFFF', linewidths=2.2,
+                        label='HOGAR EVALUADO' if lang == "es" else 'EVALUATED HOUSEHOLD',
+                        zorder=10
+                    )
+                    ax_sc1.set_xlabel("Número de Miembros del Hogar (MIEPERHO)" if lang == "es" else "Household Members (MIEPERHO)", color='#FFFFFF', fontsize=10, fontweight='bold')
+                    ax_sc1.set_ylabel("Gasto Equipamiento S/. (SG42)" if lang == "es" else "Equipment Expense PEN (SG42)", color='#FFFFFF', fontsize=10, fontweight='bold')
+                    ax_sc1.tick_params(colors='#FFFFFF', labelsize=9)
+                    ax_sc1.set_ylim(-20, min(1400, df_sample["SG42"].quantile(0.98)))
+                    ax_sc1.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+                    for spine in ax_sc1.spines.values():
+                        spine.set_color('#3B82F6')
+                    leg1 = ax_sc1.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
+                    for text in leg1.get_texts():
+                        text.set_color("#FFFFFF")
+                    plt.tight_layout()
+                    st.pyplot(fig_sc1)
+
+                    st.markdown(f"##### {t['scatter_b_title']}")
+                    fig_sc2, ax_sc2 = plt.subplots(figsize=(8.5, 4.2), facecolor='#0B152F')
+                    ax_sc2.set_facecolor('#0F1E42')
+
+                    np.random.seed(42)
+                    jitter_x_np = non_poor["MIEPERHO"] + np.random.uniform(-0.18, 0.18, len(non_poor))
+                    jitter_y_np = non_poor["PERCEPHO"] + np.random.uniform(-0.18, 0.18, len(non_poor))
+                    jitter_x_p = poor["MIEPERHO"] + np.random.uniform(-0.18, 0.18, len(poor))
+                    jitter_y_p = poor["PERCEPHO"] + np.random.uniform(-0.18, 0.18, len(poor))
+
+                    ax_sc2.scatter(
+                        jitter_x_np, jitter_y_np,
+                        c='#38BDF8', alpha=0.55, edgecolors='none', s=45,
+                        label='No Pobre (ENAHO)' if lang == "es" else 'Non-Poor (ENAHO)'
+                    )
+                    ax_sc2.scatter(
+                        jitter_x_p, jitter_y_p,
+                        c='#F87171', alpha=0.75, edgecolors='none', s=55,
+                        label='Pobre / Vulnerable (ENAHO)' if lang == "es" else 'Poor / Vulnerable (ENAHO)'
+                    )
+                    ax_sc2.plot([0, 12], [0, 12], color='#94A3B8', linestyle=':', linewidth=1.8, label='Límite: Perceptores = Miembros' if lang == "es" else 'Limit: Earners = Members')
+                    ax_sc2.scatter(
+                        [mieperho_val], [percepho_val],
+                        c='#FBBF24', s=280, marker='*', edgecolors='#FFFFFF', linewidths=2.2,
+                        label='HOGAR EVALUADO' if lang == "es" else 'EVALUATED HOUSEHOLD',
+                        zorder=10
+                    )
+                    ax_sc2.set_xlabel("Número de Miembros del Hogar (MIEPERHO)" if lang == "es" else "Household Members (MIEPERHO)", color='#FFFFFF', fontsize=10, fontweight='bold')
+                    ax_sc2.set_ylabel("Perceptores de Ingreso (PERCEPHO)" if lang == "es" else "Income Earners (PERCEPHO)", color='#FFFFFF', fontsize=10, fontweight='bold')
+                    ax_sc2.tick_params(colors='#FFFFFF', labelsize=9)
+                    ax_sc2.set_xlim(0, 15)
+                    ax_sc2.set_ylim(-0.5, 9)
+                    ax_sc2.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+                    for spine in ax_sc2.spines.values():
+                        spine.set_color('#3B82F6')
+                    leg2 = ax_sc2.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
+                    for text in leg2.get_texts():
+                        text.set_color("#FFFFFF")
+                    plt.tight_layout()
+                    st.pyplot(fig_sc2)
 
     # =========================================================================
     # PESTAÑA 2: MODEL PERFORMANCE & MLOPS (MÉTRICAS FORMALES Y BENCHMARK)
