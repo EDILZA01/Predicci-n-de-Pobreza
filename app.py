@@ -18,6 +18,7 @@ import pandas as pd
 import pydeck as pdk
 import requests
 import streamlit as st
+import joblib
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
@@ -344,23 +345,82 @@ def render_html_table(df: pd.DataFrame) -> str:
     """
 
 
+@st.cache_resource
+def load_fallback_model() -> Any:
+    """Carga el modelo serializado k-NN directamente para ejecución en la nube sin dependencia de API."""
+    model_path = Path("models/poverty_model.joblib")
+    if model_path.is_file():
+        try:
+            return joblib.load(model_path)
+        except Exception:
+            return None
+    return None
+
+
+def predict_local_fallback(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Inferencia embebida con scikit-learn si el microservicio FastAPI no está activo."""
+    model = load_fallback_model()
+    if model is None:
+        raise RuntimeError("Modelo local no encontrado en models/poverty_model.joblib")
+
+    input_df = pd.DataFrame([{
+        "DOMINIO": int(payload["DOMINIO"]),
+        "ESTRATO": int(payload["ESTRATO"]),
+        "MIEPERHO": int(payload["MIEPERHO"]),
+        "PERCEPHO": int(payload["PERCEPHO"]),
+        "ESTRSOCIAL": int(payload["ESTRSOCIAL"]),
+        "SG42": float(payload["SG42"])
+    }])
+
+    pred = int(model.predict(input_df)[0])
+    prob = float(model.predict_proba(input_df)[0, 1]) if hasattr(model, "predict_proba") else (1.0 if pred == 1 else 0.0)
+
+    if prob < 0.35:
+        risk = "Low"
+    elif prob <= 0.65:
+        risk = "Medium"
+    else:
+        risk = "High"
+
+    status = "Vulnerable/Poverty" if pred == 1 else "Non-Poor"
+    return {
+        "prediction": pred,
+        "status": status,
+        "poverty_probability": round(prob, 4),
+        "risk_level": risk,
+        "model_version": "1.0.0-embedded"
+    }
+
+
 def check_api_health(api_base_url: str) -> Optional[Dict[str, Any]]:
-    """Consulta el endpoint /health del backend FastAPI."""
+    """Consulta el endpoint /health del backend FastAPI con fallback embebido para Streamlit Cloud."""
     try:
-        response = requests.get(f"{api_base_url.rstrip('/')}/health", timeout=3)
+        response = requests.get(f"{api_base_url.rstrip('/')}/health", timeout=2)
         if response.status_code == 200:
             return response.json()
     except requests.exceptions.RequestException:
         pass
+
+    if Path("models/poverty_model.joblib").is_file():
+        return {
+            "status": "healthy",
+            "version": "1.0.0 (Cloud Native)",
+            "model_loaded": True
+        }
     return None
 
 
 def send_prediction_request(api_base_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Envía la solicitud de inferencia al endpoint /predict."""
+    """Envía la solicitud al endpoint /predict o usa inferencia nativa en la nube si la API no está en línea."""
     target_url = f"{api_base_url.rstrip('/')}/predict"
-    response = requests.post(target_url, json=payload, timeout=5)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(target_url, json=payload, timeout=3)
+        if response.status_code == 200:
+            return response.json()
+    except requests.exceptions.RequestException:
+        pass
+
+    return predict_local_fallback(payload)
 
 
 def main() -> None:
