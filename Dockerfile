@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY api/ ./api/
 COPY models/ ./models/
 COPY src/ ./src/
+COPY data/ ./data/
 COPY app.py .
 
 # Exposición del puerto del microservicio REST

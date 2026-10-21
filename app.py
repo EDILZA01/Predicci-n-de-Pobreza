@@ -560,11 +560,11 @@ def main() -> None:
         st.markdown("### 🌐 Idioma / Language")
         col_l1, col_l2 = st.columns(2)
         with col_l1:
-            if st.button("🇵🇪 Español", use_container_width=True, type="primary" if lang == "es" else "secondary"):
+            if st.button("🇵🇪 Español", width="stretch", type="primary" if lang == "es" else "secondary"):
                 st.session_state["lang"] = "es"
                 st.rerun()
         with col_l2:
-            if st.button("🇺🇸 English", use_container_width=True, type="primary" if lang == "en" else "secondary"):
+            if st.button("🇺🇸 English", width="stretch", type="primary" if lang == "en" else "secondary"):
                 st.session_state["lang"] = "en"
                 st.rerun()
 
@@ -572,7 +572,7 @@ def main() -> None:
 
         # Presets Rápidos
         st.markdown(f"### {t['presets_title']}")
-        if st.button(t["preset_urban"], use_container_width=True):
+        if st.button(t["preset_urban"], width="stretch"):
             st.session_state["preset_values"] = {
                 "dominio": 8,
                 "estrato": 1,
@@ -583,7 +583,7 @@ def main() -> None:
             }
             st.rerun()
 
-        if st.button(t["preset_rural"], use_container_width=True):
+        if st.button(t["preset_rural"], width="stretch"):
             st.session_state["preset_values"] = {
                 "dominio": 6,
                 "estrato": 8,
@@ -729,7 +729,7 @@ def main() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # BOTÓN DE INFERENCIA
-        predict_btn = st.button(t["btn_predict"], type="primary", use_container_width=True)
+        predict_btn = st.button(t["btn_predict"], type="primary", width="stretch")
 
         if predict_btn or "last_prediction" in st.session_state:
             if predict_btn:
@@ -874,7 +874,7 @@ def main() -> None:
             tooltip={"text": "📍 {name}\nTasa Pobreza INEI: {poverty_rate}"}
         )
 
-        st.pydeck_chart(deck_map, use_container_width=True)
+        st.pydeck_chart(deck_map, width="stretch")
 
         st.markdown("---")
 
@@ -930,7 +930,7 @@ def main() -> None:
                 color='#FFFFFF', fontsize=10.5, fontweight='bold'
             )
             ax_pca.tick_params(colors='#FFFFFF', labelsize=9.5)
-            ax_pca.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+            ax_pca.grid(True, color='white', linestyle='--', alpha=0.15)
             for spine in ax_pca.spines.values():
                 spine.set_color('#3B82F6')
 
@@ -1029,7 +1029,7 @@ def main() -> None:
                     ax_sc1.set_ylabel("Gasto Equipamiento S/. (SG42)" if lang == "es" else "Equipment Expense PEN (SG42)", color='#FFFFFF', fontsize=10, fontweight='bold')
                     ax_sc1.tick_params(colors='#FFFFFF', labelsize=9)
                     ax_sc1.set_ylim(-20, min(1400, df_sample["SG42"].quantile(0.98)))
-                    ax_sc1.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+                    ax_sc1.grid(True, color='white', linestyle='--', alpha=0.15)
                     for spine in ax_sc1.spines.values():
                         spine.set_color('#3B82F6')
                     leg1 = ax_sc1.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
@@ -1070,7 +1070,7 @@ def main() -> None:
                     ax_sc2.tick_params(colors='#FFFFFF', labelsize=9)
                     ax_sc2.set_xlim(0, 15)
                     ax_sc2.set_ylim(-0.5, 9)
-                    ax_sc2.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+                    ax_sc2.grid(True, color='white', linestyle='--', alpha=0.15)
                     for spine in ax_sc2.spines.values():
                         spine.set_color('#3B82F6')
                     leg2 = ax_sc2.legend(facecolor='#0B152F', edgecolor='#3B82F6', fontsize=9)
@@ -1171,7 +1171,7 @@ def main() -> None:
         ax_acc.set_xticklabels(models_names, color='#FFFFFF', fontsize=10, fontweight='bold')
         ax_acc.set_ylim(0, 100)
         ax_acc.tick_params(colors='#FFFFFF')
-        ax_acc.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15, axis='y')
+        ax_acc.grid(True, color='white', linestyle='--', alpha=0.15, axis='y')
         for spine in ax_acc.spines.values():
             spine.set_color('#3B82F6')
 
@@ -1203,7 +1203,7 @@ def main() -> None:
         ax_k.tick_params(colors='#FFFFFF')
         ax_k.set_xticks(k_values)
         ax_k.set_ylim(20, 90)
-        ax_k.grid(True, color='#FFFFFF', linestyle='--', alpha=0.15)
+        ax_k.grid(True, color='white', linestyle='--', alpha=0.15)
         for spine in ax_k.spines.values():
             spine.set_color('#3B82F6')
 
@@ -1224,11 +1224,11 @@ def main() -> None:
 
         if fig_matrix.is_file():
             st.markdown("##### 🎯 Matriz de Confusión Normalizada (k-NN)")
-            st.image(str(fig_matrix), caption="Confusion Matrix - 30% Test Set (ENAHO 2025)", use_container_width=True)
+            st.image(str(fig_matrix), caption="Confusion Matrix - 30% Test Set (ENAHO 2025)", width="stretch")
 
         if fig_roc.is_file():
             st.markdown("##### 📈 Curva ROC y Rendimiento Discriminante")
-            st.image(str(fig_roc), caption="ROC Curve & AUC Score frente a Clasificador Aleatorio", use_container_width=True)
+            st.image(str(fig_roc), caption="ROC Curve & AUC Score frente a Clasificador Aleatorio", width="stretch")
 
 
 if __name__ == "__main__" or (hasattr(st, "runtime") and hasattr(st.runtime, "exists") and st.runtime.exists()):

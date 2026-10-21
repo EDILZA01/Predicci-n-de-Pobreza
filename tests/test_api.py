@@ -40,7 +40,7 @@ def test_healthcheck() -> None:
     assert data.get("version") == "1.0.0"
 
 
-def test_prediction_endpoint_structure() -> None:
+def test_prediction_valid() -> None:
     """
     Verifica el endpoint POST /predict con un payload representativo válido:
       - Código HTTP 200.
@@ -80,23 +80,22 @@ def test_prediction_endpoint_structure() -> None:
     assert risk_level in ["Low", "Medium", "High"], f"Nivel de riesgo inválido: {risk_level}"
 
 
-def test_prediction_validation_error() -> None:
+def test_prediction_invalid_input() -> None:
     """
-    Verifica que datos fuera de los rangos lógicos permitidos por Pydantic
-    (ej. MIEPERHO < 1, ESTRSOCIAL > 6, DOMINIO > 8) sean interceptados
-    retornando código HTTP 422 (Unprocessable Entity).
+    Verifica que datos con valores ilógicos (ej. MIEPERHO: -5) o fuera de rangos
+    permitidos por Pydantic sean interceptados retornando código HTTP 422.
     """
-    # Caso 1: MIEPERHO negativo
+    # Caso 1: MIEPERHO = -5
     invalid_payload_1: Dict[str, Any] = {
         "DOMINIO": 4,
         "ESTRATO": 4,
-        "MIEPERHO": -2,
+        "MIEPERHO": -5,
         "PERCEPHO": 1,
         "ESTRSOCIAL": 5,
         "SG42": 80.0
     }
     response_1 = client.post("/predict", json=invalid_payload_1)
-    assert response_1.status_code == 422, f"Se esperaba 422 para MIEPERHO=-2, obtenido: {response_1.status_code}"
+    assert response_1.status_code == 422, f"Se esperaba 422 para MIEPERHO=-5, obtenido: {response_1.status_code}"
 
     # Caso 2: ESTRSOCIAL fuera de rango (10 > 6)
     invalid_payload_2: Dict[str, Any] = {
