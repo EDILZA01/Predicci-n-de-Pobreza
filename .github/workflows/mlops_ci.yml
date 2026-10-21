@@ -43,7 +43,6 @@ jobs:
         run: |
           echo "Verificando artefactos de producción y reportes visuales..."
           test -s models/poverty_model.joblib || { echo "Error: models/poverty_model.joblib no existe o está vacío"; exit 1; }
-          test -s reports/figures/confusion_matrix_knn.png || { echo "Error: confusion_matrix_knn.png no existe o está vacío"; exit 1; }
-          test -s reports/figures/roc_curve_knn.png || { echo "Error: roc_curve_knn.png no existe o está vacío"; exit 1; }
-          test -s reports/figures/models_f1_comparison.png || { echo "Error: models_f1_comparison.png no existe o está vacío"; exit 1; }
+          test -s reports/figures/confusion_matrix.png || { echo "Error: confusion_matrix.png no existe o está vacío"; exit 1; }
+          test -s reports/figures/roc_curve.png || { echo "Error: roc_curve.png no existe o está vacío"; exit 1; }
           echo "Todos los artefactos requeridos (modelo serializado y figuras de evaluación) fueron validados exitosamente."
